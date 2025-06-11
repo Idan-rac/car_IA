@@ -9,6 +9,7 @@ import { useLanguage } from "@/contexts/language-context"
 import { ArrowLeft, Share2, Download, CheckCircle, XCircle, HelpCircle } from "lucide-react"
 import Link from "next/link"
 import { RatingGraph } from "@/components/rating-graph"
+import { motion } from "framer-motion"
 
 interface EvaluationResult {
   carData: {
@@ -28,7 +29,7 @@ interface EvaluationResult {
 export default function ResultsPage() {
   const searchParams = useSearchParams()
   const { toast } = useToast()
-  const { t, isRTL } = useLanguage()
+  const { t, isRTL, language } = useLanguage()
   const [result, setResult] = useState<EvaluationResult | null>(null)
 
   useEffect(() => {
@@ -37,15 +38,18 @@ export default function ResultsPage() {
       try {
         const parsedData = JSON.parse(decodeURIComponent(data))
         setResult(parsedData)
+        console.log("Parsed evaluation result:", parsedData)
       } catch (error) {
         toast({
           title: t("results.errors.invalidData"),
           description: t("results.errors.tryAgain"),
           variant: "destructive"
         })
+        console.error("Error parsing evaluation data:", error)
       }
     }
-  }, [searchParams, toast, t])
+    console.log("ResultsPage - Current language:", language, "isRTL:", isRTL);
+  }, [searchParams, toast, t, language, isRTL])
 
   const getRecommendationIcon = (recommendation: string) => {
     switch (recommendation) {
@@ -135,7 +139,12 @@ Score: ${result.score}%
     <div className={`min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 ${isRTL ? "rtl" : "ltr"}`}>
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-3xl mx-auto">
-          <div className="flex justify-between items-center mb-8">
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="flex justify-between items-center mb-8"
+          >
             <Link href="/evaluate">
               <Button variant="ghost">
                 <ArrowLeft className="w-4 h-4 mr-2" />
@@ -152,11 +161,24 @@ Score: ${result.score}%
                 {t("results.download")}
               </Button>
             </div>
-          </div>
+          </motion.div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {/* Left Column - Recommendation and Car Details */}
-            <div className="space-y-8">
+          <div className="grid grid-cols-1 gap-8">
+            {/* Score Section */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.2 }}
+            >
+              <RatingGraph score={result.score} recommendation={result.recommendation} />
+            </motion.div>
+
+            {/* Recommendation Section */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.4 }}
+            >
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
@@ -177,7 +199,14 @@ Score: ${result.score}%
                   </div>
                 </CardContent>
               </Card>
+            </motion.div>
 
+            {/* Car Details Section */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.6 }}
+            >
               <Card>
                 <CardHeader>
                   <CardTitle>{t("results.carDetails")}</CardTitle>
@@ -215,16 +244,7 @@ Score: ${result.score}%
                   </dl>
                 </CardContent>
               </Card>
-            </div>
-
-            {/* Right Column - Rating Graph */}
-            <div className="space-y-8">
-              <Card>
-                <CardContent className="pt-6">
-                  <RatingGraph score={result.score} recommendation={result.recommendation} />
-                </CardContent>
-              </Card>
-            </div>
+            </motion.div>
           </div>
         </div>
       </div>

@@ -9,6 +9,11 @@ const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
 
+// Add debug logging
+console.log('OpenAI API Key length:', process.env.OPENAI_API_KEY?.length);
+console.log('OpenAI API Key first 4 chars:', process.env.OPENAI_API_KEY?.substring(0, 4));
+console.log('OpenAI API Key last 4 chars:', process.env.OPENAI_API_KEY?.substring(process.env.OPENAI_API_KEY.length - 4));
+
 // Types for our data
 interface CarData {
     title?: string;
@@ -236,84 +241,42 @@ async function scrapeYad2(url: string): Promise<CarData> {
     }
 }
 
-function calculateScore(carData: CarData): number {
-    let score = 50; // Start with a neutral score
-
-    // Year score (max 20 points)
-    const currentYear = new Date().getFullYear();
-    const age = currentYear - (carData.year || currentYear);
-    if (age <= 2) score += 20;
-    else if (age <= 5) score += 15;
-    else if (age <= 8) score += 10;
-    else if (age <= 12) score += 5;
-
-    // Mileage score (max 20 points)
-    const mileage = carData.mileage || 0;
-    if (mileage <= 20000) score += 20;
-    else if (mileage <= 50000) score += 15;
-    else if (mileage <= 100000) score += 10;
-    else if (mileage <= 150000) score += 5;
-
-    // Ownership score (max 10 points)
-    const ownership = carData.ownership || 1;
-    if (ownership === 1) score += 10;
-    else if (ownership === 2) score += 5;
-
-    // Price score (max 20 points)
-    // This is a simplified calculation - in a real app, you'd want to compare against market averages
-    const price = carData.price || 0;
-    if (price <= 50000) score += 20;
-    else if (price <= 100000) score += 15;
-    else if (price <= 150000) score += 10;
-    else if (price <= 200000) score += 5;
-
-    // Engine type bonus (max 10 points)
-    const engineType = (carData.engineType || '').toLowerCase();
-    if (engineType.includes('hybrid') || engineType.includes('electric')) score += 10;
-    else if (engineType.includes('diesel')) score += 5;
-
-    // Ensure score is between 0 and 100
-    return Math.min(Math.max(score, 0), 100);
-}
-
 async function evaluateWithLLM(carData: CarData, language: 'en' | 'he' = 'en'): Promise<EvaluationResponse> {
     try {
+        console.log('Starting evaluateWithLLM with data:', carData);
+        console.log('OpenAI API Key exists:', !!process.env.OPENAI_API_KEY);
+
         const systemPrompt = language === 'he'
-            ? "אתה מומחה להערכת רכבים. נתח את פרטי הרכב שסופקו ותן המלצה ברורה."
-            : "You are a car evaluation expert. Analyze the provided car details and give a clear recommendation.";
+            ? "אתה מומחה בכיר להערכת רכבים, בעל ידע נרחב בשוק הרכב ומוניטין של מתן ניתוחים מקיפים ואמינים. המטרה שלך היא לספק למשתמש הערכה מעמיקה, מנומקת היטב, ומקיפה לגבי האם כדאי לרכוש רכב משומש. התשובה שלך חייבת להיות בפורמט JSON בלבד ולכלול את השדות evaluation, recommendation, ו-score. ספק ניתוח מעמיק ומקיף של כל פרטי הרכב, כולל יתרונות, חסרונות, והתייחסות לערך שוק, בעיות נפוצות לדגם/שנה, וכיצד כל פרמטר משפיע על ההערכה הכוללת. התמקד במתן מידע מהימן שיסייע למשתמש לקבל החלטה מושכלת, כאילו ביצעת 'בדיקה עמוקה' וחיפוש נרחב של מידע אמין באינטרנט. הסבר בפירוט ובשפה ברורה מדוע הרכב מומלץ או לא מומלץ."
+            : "You are a senior car evaluation expert with extensive knowledge of the automotive market and a reputation for providing comprehensive and reliable analyses. Your goal is to provide the user with an in-depth, well-reasoned, and holistic evaluation of whether a used car is worth buying. Your response must be in JSON format only and include 'evaluation', 'recommendation', and 'score' fields. Provide a thorough and comprehensive analysis of all car details, including pros, cons, market value considerations, common issues for the specific model/year, and how each parameter influences the overall assessment. Focus on delivering trustworthy insights that help the user make an informed decision, as if you have performed a 'deep check' and extensive reliable online research. Explain in detail and in clear language why the car is recommended or not recommended.";
 
         const userPrompt = language === 'he'
             ? `
-            נתח את פרטי הרכב הבאים ותן הערכה:
+            נתח את פרטי הרכב הבאים ותן הערכה מעמיקה: 
             ${JSON.stringify(carData, null, 2)}
             
-            שקול:
-            1. ערך שוק
-            2. מצב הרכב
-            3. היסטוריית בעלות
-            4. מוניטין הדגם
-            5. יחס מחיר-ערך
+            שקול את כל הפרמטרים שניתנו בזהירות. בנה הסבר מפורט שמציין יתרונות וחסרונות ספציפיים לרכב זה, בהתבסס על ניסיונך כמומחה ועל ידע כללי לגבי דגם ו'שנתון' הרכב. 
             
-            תן המלצה ברורה: "עסקה טובה", "לא מומלץ", או "תלוי בהעדפות"
-            כלול הסבר קצר להמלצתך.
+            החזר אובייקט JSON עם השדות הבאים:
+            - "recommendation": המלצה ברורה אחת מבין "עסקה טובה", "לא מומלץ", או "תלוי בהעדפות"
+            - "evaluation": הסבר מפורט ומקיף ביותר להמלצתך. זה צריך להיות ניתוח עשיר בתוכן המפרט את הסיבות מאחורי הציון וההמלצה, כולל יתרונות, חסרונות, דגשים חשובים לקונה, וכל מידע רלוונטי שאתה כמומחה יכול לספק כאילו בדקת את הרכב לעומק.
+            - "score": ציון מספרי מ-0 עד 100 התואם את המלצתך והניתוח המפורט שלך.
             `
             : `
-            Analyze the following car details and provide an evaluation:
+            Analyze the following car details and provide an in-depth evaluation: 
             ${JSON.stringify(carData, null, 2)}
             
-            Consider:
-            1. Market value
-            2. Car condition
-            3. Ownership history
-            4. Model reputation
-            5. Price-to-value ratio
+            Carefully consider all provided parameters. Construct a detailed explanation that outlines specific pros and cons for this car, based on your expert experience and general knowledge about the car's model and year. 
             
-            Provide a clear recommendation: "Good deal", "Not recommended", or "Neutral – depends"
-            Include a brief explanation for your recommendation.
+            Return a JSON object with the following fields:
+            - "recommendation": A clear recommendation, one of "Good deal", "Not recommended", or "Neutral – depends"
+            - "evaluation": A highly detailed and comprehensive explanation for your recommendation. This should be a content-rich analysis elaborating on the reasons behind the score and recommendation, including pros, cons, important considerations for the buyer, and any relevant expert insights you can provide as if you've deeply investigated the car.
+            - "score": A numerical score from 0 to 100 that aligns with your recommendation and detailed analysis.
             `;
 
+        console.log('Making OpenAI API call...');
         const completion = await openai.chat.completions.create({
-            model: "gpt-4",
+            model: "gpt-3.5-turbo",
             messages: [
                 {
                     role: "system",
@@ -325,71 +288,77 @@ async function evaluateWithLLM(carData: CarData, language: 'en' | 'he' = 'en'): 
                 }
             ],
             temperature: 0.7,
+            response_format: { type: "json_object" }
         });
+        console.log('OpenAI API call completed');
 
-        const response = completion.choices[0].message.content;
+        const rawResponse = completion.choices[0].message.content;
+        console.log('OpenAI raw response:', rawResponse);
 
-        // Parse the LLM response to extract recommendation
-        let recommendation: 'Good deal' | 'Not recommended' | 'Neutral – depends' = 'Neutral – depends';
-        if (language === 'he') {
-            if (response?.includes('עסקה טובה')) {
-                recommendation = 'Good deal';
-            } else if (response?.includes('לא מומלץ')) {
-                recommendation = 'Not recommended';
-            }
-        } else {
-            if (response?.toLowerCase().includes('good deal')) {
-                recommendation = 'Good deal';
-            } else if (response?.toLowerCase().includes('not recommended')) {
-                recommendation = 'Not recommended';
-            }
+        let parsedResponse: { recommendation: string, evaluation: string, score: number };
+        try {
+            parsedResponse = JSON.parse(rawResponse || '{}');
+        } catch (jsonError) {
+            console.error('Failed to parse LLM response as JSON:', jsonError);
+            throw new Error(language === 'he' ? 'תגובת AI שגויה' : 'Invalid AI response');
         }
 
-        // Calculate score based on car data
-        const score = calculateScore(carData);
+        const recommendation = parsedResponse.recommendation || 'Neutral – depends';
+        const evaluation = parsedResponse.evaluation || (language === 'he' ? 'לא ניתן להעריך' : 'Unable to evaluate');
+        const score = parsedResponse.score !== undefined ? parsedResponse.score : 50; // Default score if not provided
 
-        // Translate recommendation to the selected language
-        const translatedRecommendation = recommendations[language][recommendation];
+        const translatedRecommendation = recommendations[language][recommendation as 'Good deal' | 'Not recommended' | 'Neutral – depends'] || recommendation;
 
         return {
             carData,
-            evaluation: response || (language === 'he' ? 'לא ניתן להעריך' : 'Unable to evaluate'),
+            evaluation: evaluation,
             recommendation: translatedRecommendation,
-            score
+            score: score
         };
     } catch (error) {
-        console.error('Error evaluating with LLM:', error);
+        console.error('Error in evaluateWithLLM:', error);
         throw new Error(language === 'he' ? 'שגיאה בהערכת הרכב' : 'Failed to evaluate car data');
     }
 }
 
 export async function POST(request: Request) {
     try {
+        console.log('API route called');
         const body = await request.json();
+        console.log('Request body:', body);
         let carData: CarData;
         const language = body.language || 'en';
 
         if (body.yad2Url) {
-            // Handle Yad2 URL scraping
+            console.log('Processing Yad2 URL:', body.yad2Url);
             carData = await scrapeYad2(body.yad2Url);
         } else if (body.carData) {
-            // Handle manual input
+            console.log('Processing manual car data:', body.carData);
             carData = body.carData;
         } else {
+            console.log('No valid input data provided');
             return NextResponse.json(
                 { error: language === 'he' ? 'נדרש קישור יד2 או פרטי רכב' : 'Either yad2Url or carData must be provided' },
                 { status: 400 }
             );
         }
 
+        console.log('Car data processed:', carData);
+        console.log('Calling evaluateWithLLM...');
+
         // Evaluate the car data using LLM
         const evaluation = await evaluateWithLLM(carData, language);
+        console.log('Evaluation completed:', evaluation);
 
         return NextResponse.json(evaluation);
     } catch (error) {
-        console.error('Error in evaluation endpoint:', error);
+        console.error('Detailed error in evaluation endpoint:', error);
         return NextResponse.json(
-            { error: 'Failed to process car evaluation' },
+            {
+                error: 'Failed to process car evaluation',
+                details: error instanceof Error ? error.message : 'Unknown error',
+                stack: error instanceof Error ? error.stack : undefined
+            },
             { status: 500 }
         );
     }
